@@ -4,11 +4,14 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset
-from torchvision import datasets, transforms
+from torch.utils.data import Dataset,dataloader
+from torchvision import transforms
 from scipy.ndimage.interpolation import rotate as scipyrotate
 from networks import MLP, ConvNet, LeNet, AlexNet, AlexNetBN, VGG11, VGG11BN, ResNet18, ResNet18BN_AP, ResNet18BN
-
+import datasets
+from omegaconf import OmegaConf,DictConfig,ListConfig
+import importlib
+'''
 def get_dataset(dataset, data_path):
     if dataset == 'MNIST':
         channel = 1
@@ -98,10 +101,7 @@ def get_dataset(dataset, data_path):
 
 
     testloader = torch.utils.data.DataLoader(dst_test, batch_size=256, shuffle=False, num_workers=0)
-    return channel, im_size, num_classes, class_names, mean, std, dst_train, dst_test, testloader
-
-
-
+    return channel, im_size, num_classes, class_names, mean, std, dst_train, dst_test, testloader'''
 class TensorDataset(Dataset):
     def __init__(self, images, labels): # images: n x c x h x w tensor
         self.images = images.detach().float()
@@ -113,8 +113,49 @@ class TensorDataset(Dataset):
     def __len__(self):
         return self.images.shape[0]
 
+def instantiate_from_config(config:DictConfig):
+    if not "target" in config:
+        if config == '__is_first_stage__':
+            return None
+        elif config == "__is_unconditional__":
+            return None
+        raise KeyError("Expected key `target` to instantiate.")
+    return get_obj_from_str(config["target"])(**config.get("params", dict()))
 
 
+def get_obj_from_str(string, reload=False):
+    module, cls = string.rsplit(".", 1)
+    if reload:
+        module_imp = importlib.import_module(module)
+        importlib.reload(module_imp)
+    return getattr(importlib.import_module(module, package=None), cls)
+
+def get_dataset_from_config(config_path: str)->datasets.Dataset:
+    config = OmegaConf.load(config_path)
+    dataset_config = config["dataset"]
+    dataloader_config = config["dataloader"]
+    dataset = instantiate_from_config(dataset_config)
+    channel, im_size = dataloader_config.get("channel", 3), dataloader_config.get("im_size", (32, 32))
+    if "means" in dataset_config:
+        means = dataset_config["means"]
+        stds = dataset_config["stds"]
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=means, std=stds)])
+    # dataset should contains "img" column
+    dataset = dataset.map(lambda x: x.update({"img":transform(x["img"])}))
+    dataloader_config["params"].update({"dataset":dataset})
+    DataLoader = instantiate_from_config(dataloader_config)
+    
+    return {
+        "dataset":dataset,
+        "dataloader":DataLoader,
+        "channel":channel,
+        "im_size":im_size
+    }
+def default_collate_fn(batch):
+    """
+    batch is a list of dicts with keys "img" and "label"
+    """
+    return {"img":torch.stack([x["img"] for x in batch]), "label":torch.tensor([x["label"] for x in batch])}
 def get_default_convnet_setting():
     net_width, net_depth, net_act, net_norm, net_pooling = 128, 3, 'relu', 'instancenorm', 'avgpooling'
     return net_width, net_depth, net_act, net_norm, net_pooling

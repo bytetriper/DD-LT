@@ -1,0 +1,14 @@
+dataset:
+  target: datasets.load_dataset
+  params:
+    path: 'tomas-gajarsky/cifar10-lt'
+    cache_dir: './data'
+dataloader:
+  target: torch.utils.data.DataLoader
+  params:
+    batch_size: 128
+    shuffle: true
+    num_workers: 4
+    pin_memory: true
+    drop_last: true
+    collate_fn: utils.default_collate_fn
