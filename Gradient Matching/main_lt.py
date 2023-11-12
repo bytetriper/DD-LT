@@ -73,7 +73,6 @@ def main():
     # channel, im_size, num_classes, class_names, mean, std, dst_train, dst_test, testloader = get_dataset(args.dataset, args.data_path)
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
 
-    # TODO
     ''' set the channel,..., testloader for CIFAR10-LT like function get_dataset() in utils.py'''
     if args.dataset == 'CIFAR10':
         config_path = './config/Cifar10lt.yaml'
@@ -93,7 +92,6 @@ def main():
         test_labels, dtype=torch.long)
     testloader = torch.utils.data.DataLoader(TensorDataset(
         test_images, test_labels), batch_size=256, shuffle=True)
-    # TODO
 
     accs_all_exps = dict()  # record performances of all experiments
     for key in model_eval_pool:
@@ -133,7 +131,6 @@ def main():
             print('real images channel %d, mean = %.4f, std = %.4f' % (
                 ch, torch.mean(images_all[:, ch]), torch.std(images_all[:, ch])))
 
-        # TODO
         ''' select all the classes to be distillated '''
         distill_classes = []
         each_class_num = [len(c) for c in indices_class]
@@ -143,18 +140,6 @@ def main():
             if cls_num > 0:
                 print('class %d is selected to be distillated' % c)
                 distill_classes.append(c)
-        # TODO
-
-        ''' initialize the synthetic data '''
-        """ image_syn = torch.randn(size=(num_classes*args.ipc, channel, im_size[0], im_size[1]), dtype=torch.float, requires_grad=True, device=args.device)
-        label_syn = torch.tensor([np.ones(args.ipc)*i for i in range(num_classes)], dtype=torch.long, requires_grad=False, device=args.device).view(-1) # [0,0,0, 1,1,1, ..., 9,9,9]
-
-        if args.init == 'real':
-            print('initialize synthetic data from random real images')
-            for c in range(num_classes):
-                image_syn.data[c*args.ipc:(c+1)*args.ipc] = get_images(c, args.ipc).detach().data
-        else:
-            print('initialize synthetic data from random noise') """
 
         image_syn = torch.randn(size=(len(distill_classes)*args.ipc, channel,
                                 im_size[0], im_size[1]), dtype=torch.float, requires_grad=True, device=args.device)

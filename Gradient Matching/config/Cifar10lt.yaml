@@ -4,10 +4,3 @@ dataset:
         path: "tomas-gajarsky/cifar10-lt"
         name: "r-50"
         cache_dir: "./data"
-dataloader:
-    target: torch.utils.data.DataLoader
-    params:
-        batch_size: 2
-        shuffle: true
-        num_workers: 0
-        collate_fn: utils1.default_collate_fn

@@ -14,99 +14,6 @@ import importlib
 from tqdm import tqdm
 from sklearn.metrics import confusion_matrix
 
-'''
-def get_dataset(dataset, data_path):
-    if dataset == 'MNIST':
-        channel = 1
-        im_size = (28, 28)
-        num_classes = 10``
-        mean = [0.1307]
-        std = [0.3081]
-        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)])
-        dst_train = datasets.MNIST(data_path, train=True, download=True, transform=transform) # no augmentation
-        dst_test = datasets.MNIST(data_path, train=False, download=True, transform=transform)
-        class_names = [str(c) for c in range(num_classes)]
-
-    elif dataset == 'FashionMNIST':
-        channel = 1
-        im_size = (28, 28)
-        num_classes = 10
-        mean = [0.2861]
-        std = [0.3530]
-        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)])
-        dst_train = datasets.FashionMNIST(data_path, train=True, download=True, transform=transform) # no augmentation
-        dst_test = datasets.FashionMNIST(data_path, train=False, download=True, transform=transform)
-        class_names = dst_train.classes
-
-    elif dataset == 'SVHN':
-        channel = 3
-        im_size = (32, 32)
-        num_classes = 10
-        mean = [0.4377, 0.4438, 0.4728]
-        std = [0.1980, 0.2010, 0.1970]
-        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)])
-        dst_train = datasets.SVHN(data_path, split='train', download=True, transform=transform)  # no augmentation
-        dst_test = datasets.SVHN(data_path, split='test', download=True, transform=transform)
-        class_names = [str(c) for c in range(num_classes)]
-
-    elif dataset == 'CIFAR10':
-        channel = 3
-        im_size = (32, 32)
-        num_classes = 10
-        mean = [0.4914, 0.4822, 0.4465]
-        std = [0.2023, 0.1994, 0.2010]
-        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)])
-        dst_train = datasets.CIFAR10(data_path, train=True, download=True, transform=transform) # no augmentation
-        dst_test = datasets.CIFAR10(data_path, train=False, download=True, transform=transform)
-        class_names = dst_train.classes
-
-    elif dataset == 'CIFAR100':
-        channel = 3
-        im_size = (32, 32)
-        num_classes = 100
-        mean = [0.5071, 0.4866, 0.4409]
-        std = [0.2673, 0.2564, 0.2762]
-        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)])
-        dst_train = datasets.CIFAR100(data_path, train=True, download=True, transform=transform) # no augmentation
-        dst_test = datasets.CIFAR100(data_path, train=False, download=True, transform=transform)
-        class_names = dst_train.classes
-
-    elif dataset == 'TinyImageNet':
-        channel = 3
-        im_size = (64, 64)
-        num_classes = 200
-        mean = [0.485, 0.456, 0.406]
-        std = [0.229, 0.224, 0.225]
-        data = torch.load(os.path.join(data_path, 'tinyimagenet.pt'), map_location='cpu')
-
-        class_names = data['classes']
-
-        images_train = data['images_train']
-        labels_train = data['labels_train']
-        images_train = images_train.detach().float() / 255.0
-        labels_train = labels_train.detach()
-        for c in range(channel):
-            images_train[:,c] = (images_train[:,c] - mean[c])/std[c]
-        dst_train = TensorDataset(images_train, labels_train)  # no augmentation
-
-        images_val = data['images_val']
-        labels_val = data['labels_val']
-        images_val = images_val.detach().float() / 255.0
-        labels_val = labels_val.detach()
-
-        for c in range(channel):
-            images_val[:, c] = (images_val[:, c] - mean[c]) / std[c]
-
-        dst_test = TensorDataset(images_val, labels_val)  # no augmentation
-
-    else:
-        exit('unknown dataset: %s'%dataset)
-
-
-    testloader = torch.utils.data.DataLoader(dst_test, batch_size=256, shuffle=False, num_workers=0)
-    return channel, im_size, num_classes, class_names, mean, std, dst_train, dst_test, testloader'''
-
-
 class TensorDataset(Dataset):
     def __init__(self, images, labels):  # images: n x c x h x w tensor
         self.images = images.detach().float()
@@ -140,18 +47,10 @@ def get_obj_from_str(string, reload=False):
 def get_dataset_from_config(config_path: str) -> datasets.Dataset:
     config = OmegaConf.load(config_path)
     dataset_config = config["dataset"]
-    dataloader_config = config["dataloader"]
-    # dataset = instantiate_from_config(dataset_config)
-    dataset = datasets.load_from_disk("./data/cifar10-lt/r-10")
-    channel, im_size = dataloader_config.get(
-        "channel", 3), dataloader_config.get("im_size", (32, 32))
-    if "means" in dataset_config:
-        means = dataset_config["means"]
-        stds = dataset_config["stds"]
-        transform = transforms.Compose(
-            [transforms.ToTensor(), transforms.Normalize(mean=means, std=stds)])
-    else:
-        transform = transforms.ToTensor()
+    dataset = instantiate_from_config(dataset_config)
+    channel = 3
+    im_size = (32, 32)
+    transform = transforms.ToTensor()
     # dataset should contains "img" column
     train_dataset = dataset['train']
     test_dataset = dataset['test']
@@ -162,21 +61,7 @@ def get_dataset_from_config(config_path: str) -> datasets.Dataset:
         lambda x: {"img": transform(x["img"])})
     test_dataset.set_format("torch", columns=["img", "label"])
 
-    # testdataloader = DataLoader(
-    #     dataset=test_dataset, **dataloader_config.get("params", dict()))
-    # testdataloader = DataLoader(
-    #     dataset=test_dataset, batch_size=2, shuffle=True, num_workers=0)
     return train_dataset, test_dataset, channel, im_size
-
-
-# def default_collate_fn(batch):
-#     """
-#     batch is a list of dicts with keys "img" and "label"
-#     """
-#     print("*"*50)
-#     print(batch)
-#     return {"img": torch.stack([x for x in batch["img"]]), "label": torch.tensor([x for x in batch["label"]])}
-
 
 def get_default_convnet_setting():
     net_width, net_depth, net_act, net_norm, net_pooling = 128, 3, 'relu', 'instancenorm', 'avgpooling'
