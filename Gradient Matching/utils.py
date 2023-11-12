@@ -4,19 +4,22 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from scipy.ndimage.interpolation import rotate as scipyrotate
 from networks import MLP, ConvNet, LeNet, AlexNet, AlexNetBN, VGG11, VGG11BN, ResNet18, ResNet18BN_AP, ResNet18BN
 import datasets
 from omegaconf import OmegaConf, DictConfig
 import importlib
+from tqdm import tqdm
+from sklearn.metrics import confusion_matrix
+
 '''
 def get_dataset(dataset, data_path):
     if dataset == 'MNIST':
         channel = 1
         im_size = (28, 28)
-        num_classes = 10
+        num_classes = 10``
         mean = [0.1307]
         std = [0.3081]
         transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)])
@@ -138,7 +141,8 @@ def get_dataset_from_config(config_path: str) -> datasets.Dataset:
     config = OmegaConf.load(config_path)
     dataset_config = config["dataset"]
     dataloader_config = config["dataloader"]
-    dataset = instantiate_from_config(dataset_config)
+    # dataset = instantiate_from_config(dataset_config)
+    dataset = datasets.load_from_disk("./data/cifar10-lt/r-10")
     channel, im_size = dataloader_config.get(
         "channel", 3), dataloader_config.get("im_size", (32, 32))
     if "means" in dataset_config:
@@ -146,25 +150,32 @@ def get_dataset_from_config(config_path: str) -> datasets.Dataset:
         stds = dataset_config["stds"]
         transform = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize(mean=means, std=stds)])
-        # dataset should contains "img" column
-        dataset = dataset.map(lambda x: x.update({"img": transform(x["img"])}))
-    # dataloader_config["params"].update({"dataset": dataset})
-    # DataLoader = instantiate_from_config(dataloader_config)
-    DataLoader = torch.utils.data.DataLoader(
-        dataset, **dataloader_config.get("params", dict()))
-    return {
-        "dataset": dataset,
-        "dataloader": DataLoader,
-        "channel": channel,
-        "im_size": im_size
-    }
+    else:
+        transform = transforms.ToTensor()
+    # dataset should contains "img" column
+    train_dataset = dataset['train']
+    test_dataset = dataset['test']
+    train_dataset = train_dataset.map(
+        lambda x: {"img": transform(x["img"])})
+    train_dataset.set_format("torch", columns=["img", "label"])
+    test_dataset = test_dataset.map(
+        lambda x: {"img": transform(x["img"])})
+    test_dataset.set_format("torch", columns=["img", "label"])
+
+    # testdataloader = DataLoader(
+    #     dataset=test_dataset, **dataloader_config.get("params", dict()))
+    # testdataloader = DataLoader(
+    #     dataset=test_dataset, batch_size=2, shuffle=True, num_workers=0)
+    return train_dataset, test_dataset, channel, im_size
 
 
-def default_collate_fn(batch):
-    """
-    batch is a list of dicts with keys "img" and "label"
-    """
-    return {"img": torch.stack([x["img"] for x in batch]), "label": torch.tensor([x["label"] for x in batch])}
+# def default_collate_fn(batch):
+#     """
+#     batch is a list of dicts with keys "img" and "label"
+#     """
+#     print("*"*50)
+#     print(batch)
+#     return {"img": torch.stack([x for x in batch["img"]]), "label": torch.tensor([x for x in batch["label"]])}
 
 
 def get_default_convnet_setting():
@@ -364,7 +375,7 @@ def get_loops(ipc):
     return outer_loop, inner_loop
 
 
-def epoch(mode, dataloader, net, optimizer, criterion, args, aug):
+""" def epoch(mode, dataloader, net, optimizer, criterion, args, aug):
     loss_avg, acc_avg, num_exp = 0, 0, 0
     net = net.to(args.device)
     criterion = criterion.to(args.device)
@@ -401,13 +412,72 @@ def epoch(mode, dataloader, net, optimizer, criterion, args, aug):
     loss_avg /= num_exp
     acc_avg /= num_exp
 
-    return loss_avg, acc_avg
+    return loss_avg, acc_avg """
+
+
+def epoch(mode, dataloader, net, optimizer, criterion, args, aug):
+    loss_avg, acc_avg, num_exp = 0, 0, 0
+    net = net.to(args.device)
+    criterion = criterion.to(args.device)
+
+    if mode == 'train':
+        net.train()
+    else:
+        net.eval()
+
+    all_true_labels = []
+    all_predicted_labels = []
+
+    for i_batch, datum in enumerate(dataloader):
+        img = datum[0].float().to(args.device)
+        if aug:
+            if args.dsa:
+                img = DiffAugment(img, args.dsa_strategy, param=args.dsa_param)
+            else:
+                img = augment(img, args.dc_aug_param, device=args.device)
+        lab = datum[1].long().to(args.device)
+        n_b = lab.shape[0]
+
+        output = net(img)
+        loss = criterion(output, lab)
+        acc = np.sum(np.equal(np.argmax(output.cpu().data.numpy(),
+                     axis=-1), lab.cpu().data.numpy()))
+
+        loss_avg += loss.item()*n_b
+        acc_avg += acc
+        num_exp += n_b
+
+        if mode != 'train':
+            all_true_labels.extend(lab.cpu().data.numpy())
+            all_predicted_labels.extend(
+                np.argmax(output.cpu().data.numpy(), axis=-1))
+
+        if mode == 'train':
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+    loss_avg /= num_exp
+    acc_avg /= num_exp
+
+    if mode != 'train':
+        class_accuracies = calculate_class_accuracies(
+            all_true_labels, all_predicted_labels)
+        return loss_avg, acc_avg, class_accuracies
+    else:
+        return loss_avg, acc_avg
+
+
+def calculate_class_accuracies(true_labels, predicted_labels):
+    cm = confusion_matrix(true_labels, predicted_labels)
+    class_accuracies = np.diag(cm) / cm.sum(axis=1)
+    return class_accuracies
 
 
 def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args):
     net = net.to(args.device)
-    images_train = images_train.to(args.device)
-    labels_train = labels_train.to(args.device)
+    images_train = images_train
+    labels_train = labels_train
     lr = float(args.lr_net)
     Epoch = int(args.epoch_eval_train)
     lr_schedule = [Epoch//2+1]
@@ -416,11 +486,11 @@ def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args):
     criterion = nn.CrossEntropyLoss().to(args.device)
 
     dst_train = TensorDataset(images_train, labels_train)
-    trainloader = torch.utils.data.DataLoader(
-        dst_train, batch_size=args.batch_train, shuffle=True, num_workers=0)
+    trainloader = DataLoader(
+        dst_train, batch_size=args.batch_train, shuffle=True)
 
     start = time.time()
-    for ep in range(Epoch+1):
+    for ep in tqdm(range(Epoch+1)):
         loss_train, acc_train = epoch(
             'train', trainloader, net, optimizer, criterion, args, aug=True)
         if ep in lr_schedule:
@@ -429,10 +499,14 @@ def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args):
                 net.parameters(), lr=lr, momentum=0.9, weight_decay=0.0005)
 
     time_train = time.time() - start
-    loss_test, acc_test = epoch(
+    loss_test, acc_test, each_class_acc = epoch(
         'test', testloader, net, optimizer, criterion, args, aug=False)
+    print("Class Accuracies:")
+    for i, acc in enumerate(each_class_acc):
+        print(f"Class {i}: {acc:.4f}")
     print('%s Evaluate_%02d: epoch = %04d train time = %d s train loss = %.6f train acc = %.4f, test acc = %.4f' % (
         get_time(), it_eval, Epoch, int(time_train), loss_train, acc_train, acc_test))
+    # print the classification accuracy of each class
 
     return net, acc_train, acc_test
 

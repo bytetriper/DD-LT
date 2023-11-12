@@ -5,3 +5,5 @@ datasets
 scikit-learn
 matplotlib
 omegaconf
+sklearn
+tqdm
