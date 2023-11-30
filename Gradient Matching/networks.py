@@ -46,6 +46,11 @@ class ConvNet(nn.Module):
         out = out.view(out.size(0), -1)
         out = self.classifier(out)
         return out
+    
+    def visualize(self, x):
+        out = self.features(x)
+        out = out.view(out.size(0), -1)
+        return out
 
     def embed(self, x):
         out = self.features(x)
@@ -89,7 +94,7 @@ class ConvNet(nn.Module):
         else:
             exit('unknown net_norm: %s'%net_norm)
 
-    def _make_layers(self, channel, net_width, net_depth, net_norm, net_act, net_pooling, im_size):
+    def _make_layers(self, channel=3, net_width=128, net_depth=3, net_norm='instancenorm', net_act='relu', net_pooling='avgpooling', im_size=(32, 32)):
         layers = []
         in_channels = channel
         if im_size[0] == 28:
@@ -108,8 +113,6 @@ class ConvNet(nn.Module):
                 shape_feat[2] //= 2
 
         return nn.Sequential(*layers), shape_feat
-
-
 
 ''' LeNet '''
 class LeNet(nn.Module):
@@ -494,4 +497,3 @@ def ResNet101(channel, num_classes):
 
 def ResNet152(channel, num_classes):
     return ResNet(Bottleneck, [3,8,36,3], channel=channel, num_classes=num_classes)
-
