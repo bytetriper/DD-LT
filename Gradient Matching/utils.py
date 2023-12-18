@@ -48,7 +48,7 @@ def get_obj_from_str(string, reload=False):
 def get_dataset_from_config(args, config_path: str) -> datasets.Dataset:
     # config = OmegaConf.load(config_path)
     # dataset = instantiate_from_config(dataset_config)
-    dataset = datasets.load_from_disk("./data/cifar10-lt/r-100")
+    dataset = datasets.load_from_disk("./data/cifar10-lt/r-10")
     channel = 3
     im_size = (32, 32)
     transform = transforms.ToTensor()
@@ -183,6 +183,8 @@ def get_network(model, channel, num_classes, im_size=(32, 32)):
         device = 'cpu'
     net = net.to(device)
 
+    print(net)
+
     return net
 
 
@@ -308,7 +310,7 @@ def get_loops(ipc):
     return loss_avg, acc_avg """
 
 
-def epoch(mode, dataloader, net, optimizer, criterion, args, aug):
+def epoch(mode, dataloader, net, optimizer, criterion, args):
     loss_avg, acc_avg, num_exp = 0, 0, 0
     net = net.to(args.device)
     criterion = criterion.to(args.device)
@@ -323,11 +325,6 @@ def epoch(mode, dataloader, net, optimizer, criterion, args, aug):
 
     for i_batch, datum in enumerate(dataloader):
         img = datum[0].float().to(args.device)
-        if aug:
-            if args.dsa:
-                img = DiffAugment(img, args.dsa_strategy, param=args.dsa_param)
-            else:
-                img = augment(img, args.dc_aug_param, device=args.device)
         lab = datum[1].long().to(args.device)
         n_b = lab.shape[0]
 
@@ -398,15 +395,15 @@ def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args):
     start = time.time()
     for ep in tqdm(range(Epoch+1)):
         loss_train, acc_train = epoch(
-            'train', trainloader, net, optimizer, criterion, args, aug=True)
-        if ep in lr_schedule:
-            lr *= 0.1
-            optimizer = torch.optim.SGD(
-                net.parameters(), lr=lr, momentum=0.9, weight_decay=0.0005)
+            'train', trainloader, net, optimizer, criterion, args)
+        # if ep in lr_schedule:
+        #     lr *= 0.1
+        #     optimizer = torch.optim.SGD(
+        #         net.parameters(), lr=lr, momentum=0.9, weight_decay=0.0005)
 
     time_train = time.time() - start
     loss_test, acc_test, each_class_acc = epoch(
-        'test', testloader, net, optimizer, criterion, args, aug=False)
+        'test', testloader, net, optimizer, criterion, args)
     print("Class Accuracies:")
     for i, acc in enumerate(each_class_acc):
         print(f"Class {i}: {acc:.4f}")

@@ -11,7 +11,7 @@ import sys
 
 
 def main():
-    log_file = "./log/CIFAR10/r-100-all-1ipc.txt"
+    log_file = "./log/CIFAR10/r-10-all-1ipc.txt"
     log_file = open(log_file, "w")
     sys.stdout = log_file
 
@@ -26,7 +26,7 @@ def main():
     parser.add_argument('--eval_mode', type=str, default='S', help='eval_mode')
     parser.add_argument('--num_exp', type=int, default=5,
                         help='the number of experiments')
-    parser.add_argument('--num_eval', type=int, default=20,
+    parser.add_argument('--num_eval', type=int, default=1,
                         help='the number of evaluating randomly initialized models')
     parser.add_argument('--epoch_eval_train', type=int, default=300,
                         help='epochs to train a model with synthetic data')
@@ -61,7 +61,7 @@ def main():
     args.dsa = True if args.method == 'DSA' else False
 
     args.save_path = os.path.join(
-        args.save_path, args.dataset, 'r-100-all-1ipc')
+        args.save_path, args.dataset, 'r-10-all-1ipc')
 
     os.makedirs(args.save_path, exist_ok=True)
 
@@ -352,7 +352,7 @@ def main():
                 dst_syn_train, batch_size=args.batch_train, shuffle=True)
             for il in range(args.inner_loop):
                 epoch('train', trainloader, net, optimizer_net,
-                      criterion, args, aug=True if args.dsa else False)
+                      criterion, args)
 
         loss_avg /= (num_classes*args.outer_loop)
 
