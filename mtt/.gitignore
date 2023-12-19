@@ -1,0 +1,6 @@
+.idea
+dataset/
+buffer/
+buffer100/
+logged_files/
+wandb/

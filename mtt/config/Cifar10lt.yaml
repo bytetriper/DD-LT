@@ -1,0 +1,6 @@
+dataset:
+    target: datasets.load_dataset
+    params:
+        path: "tomas-gajarsky/cifar10-lt"
+        name: "r-10"
+        cache_dir: "./dataset/cifar-lt/r-10"
