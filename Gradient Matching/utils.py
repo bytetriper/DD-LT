@@ -14,6 +14,7 @@ import importlib
 from tqdm import tqdm
 from sklearn.metrics import confusion_matrix
 
+
 class TensorDataset(Dataset):
     def __init__(self, images, labels):  # images: n x c x h x w tensor
         self.images = images.detach().float()
@@ -44,10 +45,10 @@ def get_obj_from_str(string, reload=False):
     return getattr(importlib.import_module(module, package=None), cls)
 
 
-def get_dataset_from_config(config_path: str) -> datasets.Dataset:
-    config = OmegaConf.load(config_path)
-    dataset_config = config["dataset"]
-    dataset = instantiate_from_config(dataset_config)
+def get_dataset_from_config(args, config_path: str) -> datasets.Dataset:
+    # config = OmegaConf.load(config_path)
+    # dataset = instantiate_from_config(dataset_config)
+    dataset = datasets.load_from_disk("./data/cifar10-lt/r-100")
     channel = 3
     im_size = (32, 32)
     transform = transforms.ToTensor()
@@ -56,12 +57,19 @@ def get_dataset_from_config(config_path: str) -> datasets.Dataset:
     test_dataset = dataset['test']
     train_dataset = train_dataset.map(
         lambda x: {"img": transform(x["img"])})
-    train_dataset.set_format("torch", columns=["img", "label"])
     test_dataset = test_dataset.map(
         lambda x: {"img": transform(x["img"])})
-    test_dataset.set_format("torch", columns=["img", "label"])
 
+    if args.dataset == "CIFAR10":
+        train_dataset.set_format("torch", columns=["img", "label"])
+        test_dataset.set_format("torch", columns=["img", "label"])
+    elif args.dataset == "CIFAR100":
+        train_dataset.set_format(
+            "torch", columns=['img', 'fine_label', 'coarse_label'])
+        test_dataset.set_format(
+            "torch", columns=['img', 'fine_label', 'coarse_label'])
     return train_dataset, test_dataset, channel, im_size
+
 
 def get_default_convnet_setting():
     net_width, net_depth, net_act, net_norm, net_pooling = 128, 3, 'relu', 'instancenorm', 'avgpooling'
@@ -343,11 +351,11 @@ def epoch(mode, dataloader, net, optimizer, criterion, args, aug):
             optimizer.step()
 
     loss_avg /= num_exp
-    acc_avg /= num_exp
+    acc_avg = acc_avg * 100 / num_exp
 
     if mode != 'train':
         class_accuracies = calculate_class_accuracies(
-            all_true_labels, all_predicted_labels)
+            all_true_labels, all_predicted_labels) * 100
         return loss_avg, acc_avg, class_accuracies
     else:
         return loss_avg, acc_avg
@@ -356,6 +364,19 @@ def epoch(mode, dataloader, net, optimizer, criterion, args, aug):
 def calculate_class_accuracies(true_labels, predicted_labels):
     cm = confusion_matrix(true_labels, predicted_labels)
     class_accuracies = np.diag(cm) / cm.sum(axis=1)
+
+    # add the confusion matrix in axis=0 and print
+    cm = np.vstack((cm, cm.sum(axis=0)))
+
+    # set the print options of numpy to print the full array
+    np.set_printoptions(threshold=np.inf)
+    print(f"predict confusion matrix:\n{cm}")
+
+    # print the false positive accuracy of each class: [cm[i][i]*100/cm[-1][i] for i in range(cm.shape[1])]
+    FP_accuracy = [cm[i][i]*100/cm[-1][i] for i in range(cm.shape[1])]
+    print("False Positive Accuracy:")
+    for i, acc in enumerate(FP_accuracy):
+        print(f"Class {i}: {acc:.4f}")
     return class_accuracies
 
 
@@ -389,9 +410,11 @@ def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args):
     print("Class Accuracies:")
     for i, acc in enumerate(each_class_acc):
         print(f"Class {i}: {acc:.4f}")
+    std = np.std(each_class_acc)
+    print(f"Class Accuracy Std:{std:.4f}")
+
     print('%s Evaluate_%02d: epoch = %04d train time = %d s train loss = %.6f train acc = %.4f, test acc = %.4f' % (
         get_time(), it_eval, Epoch, int(time_train), loss_train, acc_train, acc_test))
-    # print the classification accuracy of each class
 
     return net, acc_train, acc_test
 
